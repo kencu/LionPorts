@@ -1,0 +1,141 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+PortSystem          1.0
+
+# it's not linking in legacysupport, at least in this version
+# probably needs that patch and hack that ionic made
+#PortGroup           legacysupport 1.0
+#legacysupport.newest_darwin_requires_legacy 13
+
+name                go
+epoch               2
+version             1.11.5
+# this is the newest version that build in this configuration
+# after this we run into the unlinkat issues
+categories          lang
+platforms           darwin freebsd linux
+license             BSD
+maintainers         {ciserlohn @ci42} openmaintainer
+description         compiled, garbage-collected, concurrent programming \
+                    language developed by Google Inc.
+long_description    \
+    The Go programming language is an open source project to make programmers \
+    more productive. Go is expressive, concise, clean, and efficient. Its \
+    concurrency mechanisms make it easy to write programs that get the most \
+    out of multicore and networked machines, while its novel type system \
+    enables flexible and modular program construction. Go compiles quickly \
+    to machine code yet has the convenience of garbage collection and the \
+    power of run-time reflection. It's a fast, statically typed, compiled \
+    language that feels like a dynamically typed, interpreted language. Go \
+    is developed by Google Inc.
+
+homepage            https://golang.org/
+master_sites        https://storage.googleapis.com/golang/
+distfiles           ${name}${version}.src.tar.gz
+worksrcdir          ${name}
+
+checksums           rmd160  72ce2f34def54143595157f9e51b731757495272 \
+                    sha256  bc1ef02bb1668835db1390a2e478dcbccb5dd16911691af9d75184bbe5aa943e \
+                    size    21108339
+
+depends_build       port:go-1.4
+
+set GOROOT          ${worksrcpath}
+set GOROOT_FINAL    ${prefix}/lib/${name}
+
+supported_archs     i386 x86_64
+
+switch ${build_arch} {
+    i386 {
+        set GOARCH 386
+    }
+    x86_64 {
+        set GOARCH amd64
+    }
+    default {
+        set GOARCH {}
+    }
+}
+
+use_configure       no
+
+build.dir           ${worksrcpath}/src
+build.cmd           ./make.bash
+build.target
+build.env           GOROOT_BOOTSTRAP=${prefix}/lib/go-1.4 \
+                    GOROOT=${GOROOT} \
+                    GOARCH=${GOARCH} \
+                    GOOS=darwin \
+                    GOROOT_FINAL=${GOROOT_FINAL} \
+                    CC=${configure.cc} \
+                    CXX=${configure.cxx} \
+                    CGO_ENABLED=0
+
+test.dir ${build.dir}
+test.run yes
+test.cmd ./all.bash --no-clean
+test.target
+test.env {*}${build.env}
+
+use_parallel_build  no
+
+post-build {
+    system "find ${worksrcpath} -type d -name .hg* -print0 | xargs -0 rm -rf"
+    delete ${worksrcpath}/pkg/bootstrap
+}
+
+destroot {
+
+#    delete ${worksrcpath}/src/cmd/vendor/github.com/google/pprof/internal/binutils/testdata/malformed_macho
+
+    set grfdir ${destroot}${GOROOT_FINAL}
+    set docdir ${destroot}${prefix}/share/doc/${name}
+
+    xinstall -d ${grfdir}
+    xinstall -d ${docdir}
+
+    foreach f {api bin lib misc pkg src test} {
+        copy ${worksrcpath}/${f} ${grfdir}
+    }
+
+    foreach f {go gofmt} {
+        system -W ${destroot}${prefix}/bin/ "ln -s ../lib/${name}/bin/$f ./$f"
+    }
+
+    xinstall -m 644 -W ${worksrcpath} \
+        AUTHORS \
+        CONTRIBUTING.md \
+        CONTRIBUTORS \
+        LICENSE \
+        README.md \
+        PATENTS \
+        VERSION \
+        ${docdir}
+
+    copy {*}[glob -directory ${worksrcpath}/doc *] ${docdir}
+}
+
+livecheck.type      regex
+livecheck.url       ${homepage}/dl/
+livecheck.regex     {go([0-9.]+)\.src\.tar\.gz}
+
+
+# go 1.5 at least expects a certain layout to the clang runtime, so make the symlink first in the desired compiler
+# sudo mkdir /opt/local/libexec/llvm-9.0/lib/clang/9.0.1/lib/darwin10.8.0
+# sudo ln -s /opt/local/libexec/llvm-9.0/lib/clang/9.0.1/lib/darwin/libclang_rt.osx.a /opt/local/libexec/llvm-9.0/lib/clang/9.0.1/lib/darwin10.8.0/libclang_rt.builtins-x86_64.a
+
+
+# go 1.7+ fail due to
+# crypto/x509
+#crypto/x509/root_cgo_darwin.go:161:28: warning: implicit declaration of function 'SecCertificateCopyNormalizedSubjectContent' is invalid in C99 [-Wimplicit-function-declaration]
+#crypto/x509/root_cgo_darwin.go:161:14: warning: incompatible integer to pointer conversion initializing 'CFDataRef' (aka 'const struct __CFData *') with an expression of type 'int' [-Wint-conversion]
+#crypto/x509/root_cgo_darwin.go:166:27: warning: implicit declaration of function 'SecCertificateCopyNormalizedIssuerContent' is invalid in C99 [-Wimplicit-function-declaration]
+#crypto/x509/root_cgo_darwin.go:166:14: warning: incompatible integer to pointer conversion initializing 'CFDataRef' (aka 'const struct __CFData *') with an expression of type 'int' [-Wint-conversion]
+#cmd/asm
+# crypto/x509
+#Undefined symbols for architecture x86_64:
+#  "_SecCertificateCopyNormalizedIssuerContent", referenced from:
+#      _FetchPEMRoots in root_cgo_darwin.cgo2.o
+#  "_SecCertificateCopyNormalizedSubjectContent", referenced from:
+#      _FetchPEMRoots in root_cgo_darwin.cgo2.o
+#ld: symbol(s) not found for architecture x86_64
