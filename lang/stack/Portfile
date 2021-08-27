@@ -1,0 +1,68 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+PortSystem          1.0
+#PortGroup           haskell_stack 1.0
+#PortGroup           legacysupport 1.1
+
+name                stack
+version             2.33
+revision            0
+
+name                stack
+categories          lang haskell
+maintainers         {kencu @kencu} openmaintainer
+license             BSD
+platforms           darwin
+
+description         The Haskell Tool Stack
+long_description    Stack is a cross-platform command line interface \
+                    for developing Haskell projects. It features: \
+                    installing GHC automatically, installing packages \
+                    needed for your project, building your project, \
+                    testing your project, benchmarking your project. \
+                    It is intended for Haskellers both new and experienced.
+
+homepage            https://haskellstack.org
+
+variant prebuilt    description {Do not bootstrap stack; install the pre-built binary.} {}
+default_variants    +prebuilt
+
+#https://github.com/kencu/ghc-for-older-darwin-systems/releases/download/8.10.2/stack-2.3.3-x86_64-darwin10.tar.xz
+#https://github.com/kencu/ghc-for-older-darwin-systems/releases/download/8.10.2/stack-2.3.3-x86_64-darwin10.tar.xz
+supported_archs     x86_64
+
+
+master_sites        https://github.com/kencu/ghc-for-older-darwin-systems/releases/download/8.10.2/
+distname            stack-2.3.3-x86_64-darwin10
+use_xz              yes
+
+checksums           rmd160  976dad709e1544fa2a91461f0e53edee163354a0 \
+                    sha256  f31d8e06556a8302b7b6ce594445d8b21d2ceaba28a2d6a8c0864efb91884ec9 \
+                    size    5972168
+worksrcdir          stack-2.3.3-x86_64-darwin10
+
+post-extract {
+    xinstall -W ${workpath} -d ./bin
+    xinstall -m 0755 -W ${worksrcpath} ./stack ${workpath}/bin
+}
+
+if { [variant_isset "prebuilt"] } {
+    use_configure   no
+    build {}
+    destroot {
+        copy        ${workpath}/bin/${name} \
+                    ${destroot}${prefix}/bin/${name}
+    }
+} else {
+    post-extract {
+        xinstall -m 0755 -d "[option haskell_stack.stack_root]"
+
+        # standard stack install with 'curl | sh'; don't use
+        # system -W ${worksrcpath} "/bin/mkdir ./bin && /usr/bin/curl -sSL https://get.haskellstack.org/ | /bin/sh -s - -d ./bin"
+        # bootstrap using the pre-built ./stack binary
+        ln -s       ${workpath}/bin/${distname}-bin \
+                    ${workpath}/bin/${name}
+    }
+
+    set haskell_stack.bin ${workpath}/bin/stack
+}
